@@ -1,41 +1,44 @@
-function formatNumber(value, fraction = 0) {
-  return new Intl.NumberFormat('en-US', {
+const number = (value, fraction = 1) =>
+  new Intl.NumberFormat('en-US', {
     maximumFractionDigits: fraction,
     minimumFractionDigits: fraction
   }).format(value);
-}
-
 export class TelemetryPanel {
   constructor() {
-    this.altitude = document.getElementById('telemetryAltitude');
-    this.velocity = document.getElementById('telemetryVelocity');
-    this.totalAcceleration = document.getElementById('telemetryAccelerationTotal');
-    this.acceleration = document.getElementById('telemetryAcceleration');
-    this.fuelMass = document.getElementById('telemetryFuel');
-    this.stage = document.getElementById('telemetryStage');
-    this.flightTime = document.getElementById('telemetryTime');
+    this.fields = Object.fromEntries(
+      [
+        'Altitude',
+        'Velocity',
+        'AccelerationTotal',
+        'Acceleration',
+        'Fuel',
+        'Airspeed',
+        'Stage',
+        'Time'
+      ].map((key) => [key, document.getElementById('telemetry' + key)])
+    );
   }
-
-  reset() {
-    this.update({
-      altitudeM: 0,
-      velocityMps: 0,
-      accelerationMps2: 0,
-      totalAccelerationMps2: 0,
-      fuelMassKg: 0,
-      stageName: 'Idle',
-      tSec: 0
-    });
-  }
-
-  update(sample, options = {}) {
-    const displayTimeSec = options.displayTimeSec ?? sample.tSec;
-    this.altitude.textContent = `${formatNumber(sample.altitudeM, 0)} m`;
-    this.velocity.textContent = `${formatNumber(sample.velocityMps, 1)} m/s`;
-    this.totalAcceleration.textContent = `${formatNumber(sample.totalAccelerationMps2, 2)} m/s²`;
-    this.acceleration.textContent = `${formatNumber(sample.accelerationMps2, 2)} m/s²`;
-    this.fuelMass.textContent = `${formatNumber(sample.fuelMassKg, 0)} kg`;
-    this.stage.textContent = sample.stageName;
-    this.flightTime.textContent = `${formatNumber(displayTimeSec, 1)} s`;
+  update(sample) {
+    const f = this.fields;
+    f.Altitude.textContent =
+      sample.altitudeM < 1000
+        ? `${number(sample.altitudeM, 0)} m`
+        : `${number(sample.altitudeM / 1000)} km`;
+    f.Velocity.textContent =
+      sample.velocityMps < 1000
+        ? `${number(sample.velocityMps, 0)} m/s`
+        : `${number(sample.velocityMps / 1000, 2)} km/s`;
+    f.AccelerationTotal.textContent = `${number(sample.totalAccelerationMps2)} m/s²`;
+    f.Acceleration.textContent = `${number(sample.accelerationMps2)} m/s²`;
+    f.Fuel.textContent =
+      sample.fuelMassKg >= 1000
+        ? `${number(sample.fuelMassKg / 1000)} t`
+        : `${number(sample.fuelMassKg, 0)} kg`;
+    f.Airspeed.textContent =
+      sample.airspeedMps >= 1000
+        ? `${number(sample.airspeedMps / 1000, 2)} km/s`
+        : `${number(sample.airspeedMps, 0)} m/s`;
+    f.Stage.textContent = sample.tSec === 0 ? 'On the pad' : sample.stageName;
+    f.Time.textContent = `${number(sample.tSec)} s`;
   }
 }

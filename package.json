@@ -3,10 +3,17 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "npx --yes http-server . -p 4173 -c-1",
+    "start": "node scripts/serve.mjs",
     "regression:check": "node scripts/regression-check.mjs",
     "baseline:capture": "node scripts/capture-baseline.mjs",
     "calibration:report": "node scripts/calibration-report.mjs",
-    "visual:check": "node scripts/visual-physics-check.mjs"
+    "visual:check": "node scripts/visual-physics-check.mjs",
+    "test": "node --test scripts/flight-math.test.mjs && node scripts/regression-check.mjs && node scripts/visual-physics-check.mjs",
+    "test:browser": "node scripts/browser-check.mjs",
+    "format:check": "prettier --check index.html style.css src/app.js src/scene/threeScene.js src/simulation/*.js src/ui/*.js scripts/flight-math.test.mjs scripts/browser-check.mjs scripts/serve.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "prettier": "^3.9.9"
   }
 }

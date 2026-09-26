@@ -1,130 +1,255 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>3D Launch Trajectory Explorer</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css" />
-</head>
-
-<body>
-  <div class="scene-overlay"></div>
-  <main class="layout-shell">
-    <header class="topbar panel">
-      <div>
-        <h1>3D Launch Trajectory Explorer</h1>
-        <p>Historical mission presets with approximate ascent replay from Earth to orbit.</p>
-      </div>
-      <div class="controls-inline">
-        <label>
-          Launch Preset
-          <select id="presetSelect"></select>
-        </label>
-        <label>
-          Camera
-          <select id="cameraSelect">
-            <option value="follow">Follow Rocket</option>
-            <option value="ground">Ground Observer</option>
-            <option value="orbit">Wide Orbit</option>
-            <option value="free">Free Orbit (Drag)</option>
-          </select>
-        </label>
-        <label>
-          Visual Quality
-          <select id="qualitySelect">
-            <option value="low">Low</option>
-            <option value="medium" selected>Medium</option>
-            <option value="high">High</option>
-          </select>
-        </label>
-        <label class="toggle-label" for="reducedMotionToggle">
-          Reduced Motion
-          <input id="reducedMotionToggle" type="checkbox" />
-        </label>
-        <button id="fastForwardButton" class="btn-ghost">Fast Forward 4x</button>
-        <button id="launchButton">Launch</button>
-        <button id="resetButton" class="btn-ghost">Reset</button>
-        <span id="speedBadge" class="pill subtle">Speed: 1x</span>
-      </div>
-    </header>
-
-    <section class="content-grid">
-      <article class="viewport-card panel">
-        <div class="badge-row">
-          <span id="countdownLabel" class="pill">READY</span>
-          <span class="pill subtle" id="missionMeta">Loading mission profile...</span>
-        </div>
-        <canvas id="sim3dCanvas"></canvas>
-      </article>
-
-      <aside class="sidebar panel">
-        <section class="mission-meta">
-          <h2 id="missionName">Mission</h2>
-          <p><strong>Orbit:</strong> <span id="missionOrbit">-</span></p>
-          <p><strong>Site:</strong> <span id="missionLocation">-</span></p>
-          <p><strong>Date:</strong> <span id="missionDate">-</span></p>
-          <p class="source-links" id="missionSource"></p>
-        </section>
-
-        <section class="telemetry-mini" aria-label="Telemetry">
-          <div class="telemetry-item"><span>Altitude</span><strong id="telemetryAltitude">0 m</strong></div>
-          <div class="telemetry-item"><span>Velocity</span><strong id="telemetryVelocity">0 m/s</strong></div>
-          <div class="telemetry-item"><span>Total Accel.</span><strong id="telemetryAccelerationTotal">0 m/s²</strong></div>
-          <div class="telemetry-item"><span>Vertical Accel.</span><strong id="telemetryAcceleration">0 m/s²</strong></div>
-          <div class="telemetry-item"><span>Fuel est.</span><strong id="telemetryFuel">0 kg</strong></div>
-          <div class="telemetry-item"><span>Stage</span><strong id="telemetryStage">Idle</strong></div>
-          <div class="telemetry-item"><span>Flight Time</span><strong id="telemetryTime">0 s</strong></div>
-        </section>
-
-        <section class="charts-stack">
-          <div class="chart-card">
-            <h3>Altitude</h3>
-            <div class="chart-frame">
-              <canvas id="altitudeChart"></canvas>
-            </div>
-          </div>
-          <div class="chart-card">
-            <h3>Velocity</h3>
-            <div class="chart-frame">
-              <canvas id="velocityChart"></canvas>
-            </div>
-          </div>
-          <div class="chart-card">
-            <h3>Total Acceleration</h3>
-            <div class="chart-frame">
-              <canvas id="accelChart"></canvas>
-            </div>
-          </div>
-        </section>
-      </aside>
-    </section>
-  </main>
-
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script type="module" src="./src/app.js"></script>
-  <script>
-    // If the module app fails to initialize (commonly when opened via file://),
-    // surface a clear next step instead of leaving the preset select empty.
-    window.setTimeout(() => {
-      const presetSelect = document.getElementById('presetSelect');
-      const missionMeta = document.getElementById('missionMeta');
-      const countdownLabel = document.getElementById('countdownLabel');
-
-      if (!presetSelect || !missionMeta || !countdownLabel) return;
-
-      const hasOptions = presetSelect.options && presetSelect.options.length > 0;
-      const stillLoading = missionMeta.textContent && missionMeta.textContent.includes('Loading mission profile');
-
-      if (!hasOptions && stillLoading) {
-        countdownLabel.textContent = 'SERVER NEEDED';
-        missionMeta.textContent = 'Launch presets did not load. Open this project through a local web server (for example: npm run start).';
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#090e17" />
+    <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
+    <title>Launch Atlas &mdash; 3D Flight Explorer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+        }
       }
-    }, 1600);
-  </script>
-</body>
-
+    </script>
+  </head>
+  <body>
+    <main class="layout-shell">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">&#8599;</span>
+          <div>
+            <h1>LAUNCH <span>ATLAS</span></h1>
+            <p>From the launchpad to the edge of space.</p>
+          </div>
+        </div>
+        <div class="header-note">
+          <span class="status-dot"></span> FLIGHT EXPLORER <span class="version">/ 03</span>
+        </div>
+      </header>
+      <section class="mission-toolbar panel" aria-label="Mission controls">
+        <label class="preset-field"
+          ><span class="eyebrow">01 / SELECT A MISSION</span
+          ><select id="presetSelect" aria-label="Launch preset">
+            <option>Loading missions...</option>
+          </select></label
+        >
+        <div class="toolbar-description">
+          <span class="eyebrow">THE MISSION</span>
+          <p id="missionMeta">Loading mission profile...</p>
+        </div>
+        <div class="launch-actions">
+          <button id="launchButton" disabled>
+            <span aria-hidden="true">&#8599;</span> Launch mission</button
+          ><button id="resetButton" class="btn-ghost" aria-label="Reset mission">Reset</button>
+        </div>
+      </section>
+      <div id="appError" class="error-banner" role="alert" hidden></div>
+      <section class="content-grid">
+        <article class="viewport-card panel" aria-label="3D flight visualization">
+          <div class="view-toolbar">
+            <div class="view-title">
+              <span class="status-dot"></span><span>FLIGHT VIEW</span
+              ><span id="countdownLabel" class="pill" role="status">READY</span>
+            </div>
+            <div class="view-options">
+              <label class="sr-only" for="cameraSelect">Camera</label
+              ><select id="cameraSelect">
+                <option value="follow">Follow rocket</option>
+                <option value="ground">Ground observer</option>
+                <option value="orbit">Earth overview</option>
+                <option value="free">Free orbit · drag</option></select
+              ><button
+                id="fullscreenButton"
+                class="icon-button"
+                aria-label="Expand flight view"
+                title="Expand flight view"
+              >
+                &#9974;
+              </button>
+            </div>
+          </div>
+          <div class="canvas-wrap">
+            <canvas
+              id="sim3dCanvas"
+              aria-label="3D Earth and rocket. Select Free orbit to drag and zoom."
+              tabindex="0"
+            ></canvas>
+            <div class="viewport-caption">
+              <span>EARTH / INERTIAL VIEW</span><span>Vehicle enlarged for visibility</span>
+            </div>
+            <div id="viewHint" class="view-hint">Camera follows the vehicle</div>
+          </div>
+          <div class="playback">
+            <div class="playback-top">
+              <div class="playback-buttons">
+                <button id="pauseButton" class="btn-ghost" disabled aria-label="Pause playback">
+                  Pause</button
+                ><button id="fastForwardButton" class="btn-ghost" title="Cycle playback speed">
+                  1&times;
+                </button>
+              </div>
+              <strong id="missionClock">T+ 00:00</strong
+              ><span id="durationLabel" class="muted">Awaiting mission</span>
+            </div>
+            <label for="timeline" class="sr-only">Mission time in seconds</label
+            ><input id="timeline" type="range" min="0" max="100" step="0.1" value="0" disabled />
+            <div class="timeline-labels">
+              <span>LIFTOFF</span><span id="eventLabel">Ready for launch</span><span>COAST</span>
+            </div>
+          </div>
+        </article>
+        <aside class="sidebar">
+          <section class="telemetry-panel panel" aria-label="Live telemetry">
+            <div class="section-heading">
+              <h2>Flight telemetry</h2>
+              <span class="eyebrow">SI UNITS</span>
+            </div>
+            <div class="telemetry-mini">
+              <div class="telemetry-item primary">
+                <span>Altitude</span><strong id="telemetryAltitude">0 m</strong>
+              </div>
+              <div class="telemetry-item primary">
+                <span>Inertial speed</span><strong id="telemetryVelocity">0 m/s</strong>
+              </div>
+              <div class="telemetry-item">
+                <span title="Magnitude of inertial acceleration, including gravity"
+                  >Acceleration</span
+                ><strong id="telemetryAccelerationTotal">0 m/s²</strong>
+              </div>
+              <div class="telemetry-item">
+                <span title="Rate of change of vertical speed">Vertical accel.</span
+                ><strong id="telemetryAcceleration">0 m/s²</strong>
+              </div>
+              <div class="telemetry-item">
+                <span>Propellant est.</span><strong id="telemetryFuel">0 kg</strong>
+              </div>
+              <div class="telemetry-item">
+                <span>Air-relative speed</span><strong id="telemetryAirspeed">0 m/s</strong>
+              </div>
+            </div>
+            <div class="stage-readout">
+              <span class="eyebrow">CURRENT PHASE</span
+              ><strong id="telemetryStage">On the pad</strong><span id="telemetryTime">0.0 s</span>
+            </div>
+          </section>
+          <section class="mission-meta panel">
+            <span class="eyebrow">MISSION DOSSIER</span>
+            <h2 id="missionName">Mission</h2>
+            <dl>
+              <div>
+                <dt>Destination</dt>
+                <dd id="missionOrbit">&mdash;</dd>
+              </div>
+              <div>
+                <dt>Launch site</dt>
+                <dd id="missionLocation">&mdash;</dd>
+              </div>
+              <div>
+                <dt>Launch date</dt>
+                <dd id="missionDate">&mdash;</dd>
+              </div>
+            </dl>
+            <details>
+              <summary>About this simulation & sources</summary>
+              <p>
+                Educational ascent and coast model using approximate historical thrust and mass
+                profiles. Orbit targets are references; a full guidance, reentry, and landing model
+                is not included.
+              </p>
+              <p>
+                Speed is Earth-centered inertial. The atmosphere rotates with Earth; a rocket on the
+                pad has zero airspeed.
+              </p>
+              <p class="source-links" id="missionSource"></p>
+            </details>
+          </section>
+        </aside>
+      </section>
+      <section class="flight-data" aria-label="Flight charts">
+        <div class="data-heading">
+          <div>
+            <span class="eyebrow">02 / FLIGHT ANALYSIS</span>
+            <h2>The shape of the ascent</h2>
+          </div>
+          <p>Explore the timeline. Hover a chart for details.</p>
+        </div>
+        <div class="charts-stack">
+          <article class="chart-card panel">
+            <div class="chart-heading">
+              <h3><i class="chart-dot cyan"></i>Altitude</h3>
+              <span>km</span>
+            </div>
+            <div class="chart-frame">
+              <canvas
+                id="altitudeChart"
+                aria-label="Altitude over mission time"
+                role="img"
+              ></canvas>
+            </div>
+          </article>
+          <article class="chart-card panel">
+            <div class="chart-heading">
+              <h3><i class="chart-dot green"></i>Inertial speed</h3>
+              <span>km/s</span>
+            </div>
+            <div class="chart-frame">
+              <canvas id="velocityChart" aria-label="Speed over mission time" role="img"></canvas>
+            </div>
+          </article>
+          <article class="chart-card panel">
+            <div class="chart-heading">
+              <h3><i class="chart-dot amber"></i>Acceleration</h3>
+              <span>m/s²</span>
+            </div>
+            <div class="chart-frame">
+              <canvas
+                id="accelChart"
+                aria-label="Acceleration over mission time"
+                role="img"
+              ></canvas>
+            </div>
+          </article>
+        </div>
+      </section>
+      <footer class="settings-bar">
+        <span class="footer-brand">LAUNCH ATLAS <span> / An orbital perspective.</span></span>
+        <div class="settings-controls">
+          <label for="qualitySelect"
+            >Render quality
+            <select id="qualitySelect">
+              <option value="low">Low</option>
+              <option value="medium" selected>Medium</option>
+              <option value="high">High</option>
+            </select></label
+          ><label class="toggle-label"
+            ><input id="reducedMotionToggle" type="checkbox" /> Reduced motion</label
+          >
+        </div>
+      </footer>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <script type="module" src="./src/app.js"></script>
+    <script>
+      setTimeout(() => {
+        if (!window.launchAtlasReady && !window.launchAtlasFailed) {
+          const banner = document.getElementById('appError');
+          banner.hidden = false;
+          banner.textContent =
+            location.protocol === 'file:'
+              ? 'Open this project through a local web server: npm run start.'
+              : 'The flight explorer could not finish loading. Check your connection and reload to retry.';
+        }
+      }, 15000);
+    </script>
+  </body>
 </html>

@@ -1,393 +1,236 @@
 import { loadLaunchPresets } from './data/launchData.js';
 import { buildTrajectory } from './simulation/trajectory.js';
+import { sampleAtTime } from './simulation/playback.js';
 import { LaunchScene } from './scene/threeScene.js';
 import { TelemetryCharts } from './ui/charts.js';
 import { TelemetryPanel } from './ui/telemetry.js';
 
+const $ = (id) => document.getElementById(id);
 const state = {
   presets: [],
-  selectedPreset: null,
   trajectory: null,
-  frameIndex: 0,
-  completedSample: null,
-  completedTimeSec: null,
-  isPlaying: false,
+  time: 0,
+  playing: false,
+  started: false,
   countdown: 0,
-  countdownStartMs: 0,
-  rafId: 0,
-  lastFrameMs: 0,
-  timelineCursor: 0,
-  seenEvents: [],
-  playbackRate: 1
+  speed: 1,
+  pathIndex: 0,
+  lastFrame: 0,
+  lastUI: 0
 };
-
-const dom = {
-  presetSelect: document.getElementById('presetSelect'),
-  launchButton: document.getElementById('launchButton'),
-  resetButton: document.getElementById('resetButton'),
-  fastForwardButton: document.getElementById('fastForwardButton'),
-  speedBadge: document.getElementById('speedBadge'),
-  cameraSelect: document.getElementById('cameraSelect'),
-  qualitySelect: document.getElementById('qualitySelect'),
-  reducedMotionToggle: document.getElementById('reducedMotionToggle'),
-  countdownLabel: document.getElementById('countdownLabel'),
-  missionName: document.getElementById('missionName'),
-  missionMeta: document.getElementById('missionMeta'),
-  missionSource: document.getElementById('missionSource'),
-  missionOrbit: document.getElementById('missionOrbit'),
-  missionLocation: document.getElementById('missionLocation'),
-  missionDate: document.getElementById('missionDate'),
-  simCanvas: document.getElementById('sim3dCanvas')
-};
-
-const scene = new LaunchScene(dom.simCanvas);
-const charts = new TelemetryCharts({
-  altitudeCanvasId: 'altitudeChart',
-  velocityCanvasId: 'velocityChart',
-  accelCanvasId: 'accelChart'
-});
-const telemetry = new TelemetryPanel();
-
-function validationStatusText(validation) {
-  if (!validation) return '';
-  const warnings = validation.warnings?.length || 0;
-  const errors = validation.errors?.length || 0;
-  if (errors > 0) return `Validation: ${errors} error(s), ${warnings} warning(s)`;
-  if (warnings > 0) return `Validation: ${warnings} warning(s)`;
-  return 'Validation: clean';
+let scene, charts, telemetry;
+const clock = (seconds) =>
+  `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
+function error(message) {
+  $('appError').hidden = false;
+  $('appError').textContent = message;
 }
-
-function updateSpeedBadge() {
-  dom.speedBadge.textContent = `Speed: ${state.playbackRate}x`;
-  dom.fastForwardButton.textContent = state.playbackRate > 1 ? 'Speed 1x' : 'Fast Forward 8x';
+function updateControls() {
+  $('pauseButton').disabled = !state.started;
+  $('pauseButton').textContent = state.playing ? 'Pause' : 'Resume';
+  $('pauseButton').setAttribute('aria-label', state.playing ? 'Pause playback' : 'Resume playback');
+  $('launchButton').disabled = !state.trajectory || state.playing;
+  $('launchButton').textContent = state.started ? '\u2197 Replay mission' : '\u2197 Launch mission';
+  $('fastForwardButton').textContent = state.speed + '\u00d7';
 }
-
-function interpolateSample(samples, timeSec) {
-  if (!samples || samples.length === 0) return null;
-  if (timeSec <= samples[0].tSec) return samples[0];
-  if (timeSec >= samples[samples.length - 1].tSec) return samples[samples.length - 1];
-
-  let high = 1;
-  while (high < samples.length && samples[high].tSec < timeSec) {
-    high += 1;
+function status(sample) {
+  if (state.countdown > 0) return `T-${Math.ceil(state.countdown)}`;
+  if (!state.started) return 'READY';
+  if (sample.impacted) return 'IMPACT';
+  if (state.time >= state.trajectory.stats.durationSec) return 'COMPLETE';
+  return state.playing ? (sample.engineOn ? 'POWERED' : 'COAST') : 'PAUSED';
+}
+function renderTime({ rebuild = false, forceUI = false, snapCamera = false } = {}) {
+  if (!state.trajectory) return;
+  const { samples, events } = state.trajectory;
+  if (rebuild) {
+    scene.resetPath();
+    state.pathIndex = 0;
   }
-
-  const a = samples[high - 1];
-  const b = samples[high];
-  const span = Math.max(0.0001, b.tSec - a.tSec);
-  const t = (timeSec - a.tSec) / span;
-  const interpolateOrSnap = (av, bv) => (
-    Number.isFinite(av) && Number.isFinite(bv)
-      ? av + (bv - av) * t
-      : (t < 0.5 ? av : bv)
-  );
-  const interpolateVector = (av, bv) => {
-    if (!av || !bv) return t < 0.5 ? av : bv;
-    const ax = Number.isFinite(av.x) ? av.x : 0;
-    const ay = Number.isFinite(av.y) ? av.y : 0;
-    const az = Number.isFinite(av.z) ? av.z : 0;
-    const bx = Number.isFinite(bv.x) ? bv.x : 0;
-    const by = Number.isFinite(bv.y) ? bv.y : 0;
-    const bz = Number.isFinite(bv.z) ? bv.z : 0;
-    return {
-      x: ax + (bx - ax) * t,
-      y: ay + (by - ay) * t,
-      z: az + (bz - az) * t
-    };
-  };
-
-  return {
-    tSec: timeSec,
-    altitudeM: a.altitudeM + (b.altitudeM - a.altitudeM) * t,
-    velocityMps: a.velocityMps + (b.velocityMps - a.velocityMps) * t,
-    accelerationMps2: a.accelerationMps2 + (b.accelerationMps2 - a.accelerationMps2) * t,
-    totalAccelerationMps2: a.totalAccelerationMps2 + (b.totalAccelerationMps2 - a.totalAccelerationMps2) * t,
-    fuelMassKg: a.fuelMassKg + (b.fuelMassKg - a.fuelMassKg) * t,
-    x: a.x + (b.x - a.x) * t,
-    y: a.y + (b.y - a.y) * t,
-    headingX: a.headingX + (b.headingX - a.headingX) * t,
-    headingY: a.headingY + (b.headingY - a.headingY) * t,
-    vx: a.vx + (b.vx - a.vx) * t,
-    vy: a.vy + (b.vy - a.vy) * t,
-    latDeg: interpolateOrSnap(a.latDeg, b.latDeg),
-    lonDeg: interpolateOrSnap(a.lonDeg, b.lonDeg),
-    downrangeRad: interpolateOrSnap(a.downrangeRad, b.downrangeRad),
-    launchAzimuthDeg: interpolateOrSnap(a.launchAzimuthDeg, b.launchAzimuthDeg),
-    targetInclinationDeg: interpolateOrSnap(a.targetInclinationDeg, b.targetInclinationDeg),
-    posEcef: interpolateVector(a.posEcef, b.posEcef),
-    velEcef: interpolateVector(a.velEcef, b.velEcef),
-    posEci: interpolateVector(a.posEci, b.posEci),
-    velEci: interpolateVector(a.velEci, b.velEci),
-    thrustRatio: a.thrustRatio + (b.thrustRatio - a.thrustRatio) * t,
-    stageName: t < 0.5 ? a.stageName : b.stageName,
-    engineOn: t < 0.5 ? a.engineOn : b.engineOn,
-    landed: t >= 0.5 ? Boolean(b.landed) : Boolean(a.landed)
-  };
-}
-
-function renderMissionMetadata(preset) {
-  dom.missionName.textContent = preset.name;
-  const validationText = validationStatusText(preset.validation);
-  const confidenceText = preset.historicalConfidence ? `Historical confidence: ${preset.historicalConfidence}` : '';
-  dom.missionMeta.textContent = `${preset.provider} • ${preset.vehicle} • ${preset.destination}${confidenceText ? ` • ${confidenceText}` : ''}${validationText ? ` • ${validationText}` : ''}`;
-  dom.missionOrbit.textContent = preset.orbitClass;
-  dom.missionLocation.textContent = `${preset.location.site} (${preset.location.lat.toFixed(2)}, ${preset.location.lon.toFixed(2)})`;
-  dom.missionDate.textContent = preset.launchDate;
-  dom.missionSource.innerHTML = preset.sourceUrls
-    .map((url, index) => `<a href="${url}" target="_blank" rel="noreferrer">Source ${index + 1}</a>`)
-    .join(' • ');
-}
-
-function setPreset(presetId) {
-  const preset = state.presets.find((item) => item.id === presetId);
-  if (!preset) return;
-
-  state.selectedPreset = preset;
-  const hasErrors = Boolean(preset.validation?.hasErrors);
-  state.trajectory = hasErrors ? null : buildTrajectory(preset);
-  state.frameIndex = 0;
-  state.timelineCursor = 0;
-  state.completedSample = null;
-  state.completedTimeSec = null;
-  state.seenEvents = [];
-
-  charts.reset();
-  telemetry.reset();
-  scene.setLaunchSite(preset.location);
-  scene.resetPath();
-  renderMissionMetadata(preset);
-
-  dom.launchButton.disabled = hasErrors;
-  if (hasErrors) {
-    dom.countdownLabel.textContent = 'BLOCKED';
-    console.error('Preset validation errors:', preset.validation.errors);
-  } else if (preset.validation?.hasWarnings) {
-    console.warn('Preset validation warnings:', preset.validation.warnings);
+  // Trail geometry is appended once per stored half-second, not for interpolated frames.
+  while (state.pathIndex < samples.length && samples[state.pathIndex].tSec <= state.time) {
+    scene.appendSample(samples[state.pathIndex]);
+    state.pathIndex += 5;
   }
-
-  if (state.trajectory) {
-    charts.applyEvents(state.trajectory.samples, state.seenEvents);
+  const sample = sampleAtTime(samples, state.time);
+  scene.updateFromSample(sample, { snapCamera });
+  if (forceUI) {
+    telemetry.update(sample);
+    charts.update(state.time);
+    $('missionClock').textContent = 'T+ ' + clock(state.time);
+    $('timeline').value = state.time;
+    $('timeline').setAttribute(
+      'aria-valuetext',
+      `${state.time.toFixed(1)} seconds, ${sample.stageName}`
+    );
+    $('countdownLabel').textContent = status(sample);
+    $('eventLabel').textContent =
+      events.findLast((e) => e.timeSec <= state.time)?.label || 'Ready for launch';
   }
 }
-
-function populatePresetSelect() {
-  dom.presetSelect.innerHTML = state.presets
-    .map((preset) => `<option value="${preset.id}">${preset.name}</option>`)
-    .join('');
-}
-
-function beginCountdown() {
-  state.countdown = 5;
-  state.countdownStartMs = performance.now();
-  dom.countdownLabel.textContent = 'T-5';
-}
-
-function updateCountdown(nowMs) {
-  const elapsedSec = (nowMs - state.countdownStartMs) / 1000;
-  const remaining = Math.max(0, 5 - elapsedSec);
-  const rounded = Math.ceil(remaining);
-
-  if (remaining <= 0) {
-    dom.countdownLabel.textContent = 'LIFTOFF';
-    state.countdown = 0;
-    return true;
-  }
-
-  dom.countdownLabel.textContent = `T-${rounded}`;
-  return false;
-}
-
-function isTerminalSample(sample) {
-  return Boolean(sample?.landed)
-    || (sample?.tSec > 1 && sample?.altitudeM <= 0.1 && sample?.velocityMps <= 0.1);
-}
-
-function animate(nowMs) {
-  state.rafId = requestAnimationFrame(animate);
-  scene.render();
-
-  if (!state.isPlaying || !state.trajectory) {
-    if (state.completedSample) {
-      telemetry.update(state.completedSample, { displayTimeSec: state.completedTimeSec ?? state.completedSample.tSec });
-    }
-    return;
-  }
-
-  if (state.countdown > 0) {
-    const launched = updateCountdown(nowMs);
-    if (!launched) {
-      return;
-    }
-  }
-
-  const deltaMs = Math.min(120, nowMs - (state.lastFrameMs || nowMs));
-  state.lastFrameMs = nowMs;
-  state.timelineCursor += (deltaMs / 1000) * state.playbackRate;
-
-  const samples = state.trajectory.samples;
-  const missionEndSec = state.trajectory.stats?.durationSec ?? samples[samples.length - 1]?.tSec ?? 0;
-  if (state.timelineCursor >= missionEndSec) {
-    state.timelineCursor = missionEndSec;
-  }
-  const newlyReached = state.trajectory.events.filter((event) => event.timeSec <= state.timelineCursor);
-  if (newlyReached.length !== state.seenEvents.length) {
-    state.seenEvents = newlyReached;
-    charts.applyEvents(samples, state.seenEvents);
-  }
-
-  while (state.frameIndex < samples.length && samples[state.frameIndex].tSec <= state.timelineCursor) {
-    const sample = samples[state.frameIndex];
-    scene.updateFromSample(sample, { appendPath: true });
-    telemetry.update(sample, { displayTimeSec: sample.tSec });
-    charts.pushSample(sample);
-    state.frameIndex += 1;
-
-    if (isTerminalSample(sample)) {
-      state.completedSample = sample;
-      state.completedTimeSec = sample.tSec;
-      state.timelineCursor = sample.tSec;
-      state.isPlaying = false;
-      dom.countdownLabel.textContent = 'COMPLETE';
-      telemetry.update(sample, { displayTimeSec: state.completedTimeSec });
-      charts.render();
-      return;
-    }
-  }
-
-  const visualSample = interpolateSample(samples, state.timelineCursor);
-  if (visualSample) {
-    scene.updateFromSample(visualSample, { appendPath: false });
-  }
-
-  charts.render();
-
-  if (state.frameIndex >= samples.length || state.timelineCursor >= missionEndSec) {
-    const finalSample = samples[Math.max(0, samples.length - 1)];
-    if (finalSample) {
-      state.completedSample = finalSample;
-      state.completedTimeSec = finalSample.tSec;
-      state.timelineCursor = finalSample.tSec;
-      scene.updateFromSample(finalSample, { appendPath: false });
-      telemetry.update(finalSample, { displayTimeSec: state.completedTimeSec });
-    }
-    state.isPlaying = false;
-    dom.countdownLabel.textContent = 'COMPLETE';
-  }
-}
-
-function launch() {
-  if (!state.trajectory) {
-    dom.countdownLabel.textContent = 'BLOCKED';
-    return;
-  }
-  state.frameIndex = 0;
-  state.timelineCursor = 0;
-  state.completedSample = null;
-  state.completedTimeSec = null;
-  state.lastFrameMs = 0;
-  state.seenEvents = [];
-  state.playbackRate = 1;
-  state.isPlaying = true;
-  charts.reset();
-  telemetry.reset();
-  scene.resetPath();
-  beginCountdown();
-  updateSpeedBadge();
-
-  const first = state.trajectory.samples[0];
-  if (first) {
-    scene.updateFromSample(first, { appendPath: false, snapCamera: true });
-  }
-}
-
 function reset() {
-  state.isPlaying = false;
-  state.frameIndex = 0;
-  state.timelineCursor = 0;
-  state.completedSample = null;
-  state.completedTimeSec = null;
-  state.seenEvents = [];
+  state.time = 0;
+  state.playing = false;
+  state.started = false;
   state.countdown = 0;
-  state.playbackRate = 1;
-  dom.countdownLabel.textContent = 'READY';
-  charts.reset();
-  if (state.trajectory) {
-    charts.applyEvents(state.trajectory.samples, state.seenEvents);
-  }
-  telemetry.reset();
-  scene.resetPath();
-  updateSpeedBadge();
-
-  const first = state.trajectory?.samples[0];
-  if (first) {
-    scene.updateFromSample(first, { appendPath: false, snapCamera: true });
-    scene.render();
-  }
+  state.speed = 1;
+  state.lastFrame = 0;
+  renderTime({ rebuild: true, forceUI: true, snapCamera: true });
+  updateControls();
 }
-
-async function init() {
-  state.presets = await loadLaunchPresets();
-
-  if (!state.presets || state.presets.length === 0) {
-    dom.countdownLabel.textContent = 'NO PRESETS';
-    dom.missionName.textContent = 'No Missions Available';
-    dom.missionMeta.textContent = 'No launch presets were loaded. Check src/data/launchPresets.json and browser fetch access.';
-    dom.launchButton.disabled = true;
-    dom.resetButton.disabled = true;
-    dom.fastForwardButton.disabled = true;
+function selectPreset(id) {
+  state.playing = false;
+  const preset = state.presets.find((p) => p.id === id);
+  if (!preset) return;
+  $('missionName').textContent = preset.name;
+  $('missionMeta').textContent = `${preset.provider} / ${preset.vehicle} · ${preset.destination}`;
+  $('missionOrbit').textContent = preset.destination;
+  $('missionLocation').textContent = preset.location.site;
+  $('missionDate').textContent = new Date(preset.launchDate + 'T12:00:00Z').toLocaleDateString(
+    'en-US',
+    { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' }
+  );
+  $('missionSource').replaceChildren(
+    ...preset.sourceUrls.map((url, i) => {
+      const a = document.createElement('a');
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noreferrer';
+      a.textContent = 'Source ' + (i + 1);
+      return a;
+    })
+  );
+  if (preset.validation.hasErrors) {
+    state.trajectory = null;
+    $('launchButton').disabled = true;
+    $('timeline').disabled = true;
+    error('This mission has invalid input data and cannot launch.');
     return;
   }
-
-  populatePresetSelect();
-
-  const prefersReducedMotion = window.matchMedia
-    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  dom.reducedMotionToggle.checked = Boolean(prefersReducedMotion);
-  scene.setReducedMotion(Boolean(prefersReducedMotion));
-  scene.setQuality(dom.qualitySelect?.value || 'medium');
-
-  setPreset(state.presets[0].id);
+  $('appError').hidden = true;
+  state.trajectory = buildTrajectory(preset);
+  scene.setPreset(preset);
+  charts.setTrajectory(state.trajectory);
+  $('timeline').max = state.trajectory.stats.durationSec;
+  $('timeline').disabled = false;
+  $('durationLabel').textContent = clock(state.trajectory.stats.durationSec) + ' TOTAL';
   reset();
-
-  dom.presetSelect.addEventListener('change', (event) => {
-    setPreset(event.target.value);
+}
+function animate(now) {
+  requestAnimationFrame(animate);
+  const dt = state.lastFrame ? Math.min(0.1, (now - state.lastFrame) / 1000) : 0;
+  state.lastFrame = now;
+  if (state.playing && state.trajectory) {
+    if (state.countdown > 0) {
+      state.countdown = Math.max(0, state.countdown - dt);
+      $('countdownLabel').textContent =
+        state.countdown > 0 ? `T-${Math.ceil(state.countdown)}` : 'LIFTOFF';
+    } else {
+      state.time = Math.min(state.trajectory.stats.durationSec, state.time + dt * state.speed);
+      const done = state.time >= state.trajectory.stats.durationSec;
+      if (done) {
+        state.playing = false;
+        updateControls();
+      }
+      const uiDue = now - state.lastUI >= 100 || done;
+      renderTime({ forceUI: uiDue });
+      if (uiDue) state.lastUI = now;
+    }
+  }
+  scene.render(dt);
+}
+async function init() {
+  scene = new LaunchScene($('sim3dCanvas'));
+  charts = new TelemetryCharts({
+    altitudeCanvasId: 'altitudeChart',
+    velocityCanvasId: 'velocityChart',
+    accelCanvasId: 'accelChart'
+  });
+  telemetry = new TelemetryPanel();
+  state.presets = await loadLaunchPresets();
+  if (!state.presets.length) throw new Error('No mission presets were found.');
+  $('presetSelect').replaceChildren(...state.presets.map((p) => new Option(p.name, p.id)));
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  $('reducedMotionToggle').checked = reduced;
+  scene.setReducedMotion(reduced);
+  selectPreset(state.presets[0].id);
+  $('presetSelect').addEventListener('change', (e) => selectPreset(e.target.value));
+  $('launchButton').addEventListener('click', () => {
     reset();
+    state.started = true;
+    state.playing = true;
+    state.countdown = 3;
+    updateControls();
   });
-
-  dom.launchButton.addEventListener('click', launch);
-  dom.resetButton.addEventListener('click', reset);
-
-  dom.fastForwardButton.addEventListener('click', () => {
-    state.playbackRate = state.playbackRate === 1 ? 8 : 1;
-    updateSpeedBadge();
+  $('resetButton').addEventListener('click', reset);
+  $('pauseButton').addEventListener('click', () => {
+    if (state.time >= state.trajectory.stats.durationSec) state.time = 0;
+    state.playing = !state.playing;
+    state.lastFrame = 0;
+    renderTime({ forceUI: true, rebuild: state.time === 0 });
+    updateControls();
   });
-
-  dom.cameraSelect.addEventListener('change', (event) => {
-    scene.setCameraMode(event.target.value);
+  $('fastForwardButton').addEventListener('click', () => {
+    const rates = [1, 4, 8, 32];
+    state.speed = rates[(rates.indexOf(state.speed) + 1) % rates.length];
+    updateControls();
   });
-
-  dom.qualitySelect.addEventListener('change', (event) => {
-    scene.setQuality(event.target.value);
+  $('timeline').addEventListener('input', (e) => {
+    const target = Number(e.target.value);
+    const backwards = target < state.time;
+    state.time = target;
+    state.countdown = 0;
+    state.started = true;
+    state.playing = false;
+    renderTime({ rebuild: backwards, forceUI: true, snapCamera: true });
+    updateControls();
   });
-
-  dom.reducedMotionToggle.addEventListener('change', (event) => {
-    scene.setReducedMotion(event.target.checked);
+  $('cameraSelect').addEventListener('change', (e) => {
+    scene.setCameraMode(e.target.value);
+    $('viewHint').textContent = {
+      follow: 'Camera follows the vehicle',
+      ground: 'Fixed observer · the vehicle may pass below the horizon',
+      orbit: 'Earth overview · cyan line shows the ground-relative flight path',
+      free: 'Drag to orbit · scroll or pinch to zoom · right-drag to pan'
+    }[e.target.value];
   });
-
-  dom.simCanvas.addEventListener('pointerdown', () => {
-    if (dom.cameraSelect.value !== 'free') {
-      dom.cameraSelect.value = 'free';
-      scene.setCameraMode('free');
+  $('qualitySelect').addEventListener('change', (e) => scene.setQuality(e.target.value));
+  $('reducedMotionToggle').addEventListener('change', (e) =>
+    scene.setReducedMotion(e.target.checked)
+  );
+  $('fullscreenButton').addEventListener('click', async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await document.querySelector('.viewport-card').requestFullscreen();
+    } catch {
+      error(
+        'Fullscreen is unavailable in this browser. The flight view still supports all camera modes.'
+      );
     }
   });
-
-  updateSpeedBadge();
-
+  $('sim3dCanvas').addEventListener('sceneerror', (e) => {
+    state.playing = false;
+    updateControls();
+    error(e.detail);
+  });
+  $('sim3dCanvas').addEventListener('scenerestored', () => {
+    $('appError').hidden = true;
+    renderTime({ forceUI: true });
+  });
+  document.addEventListener('visibilitychange', () => {
+    state.lastFrame = 0;
+    if (document.hidden && state.playing) {
+      state.playing = false;
+      updateControls();
+      renderTime({ forceUI: true });
+    }
+  });
+  window.launchAtlasReady = true;
   requestAnimationFrame(animate);
 }
-
-init().catch((error) => {
-  console.error(error);
-  dom.countdownLabel.textContent = 'ERROR';
-  dom.missionMeta.textContent = `Load failed: ${error.message || 'Unknown startup error'}`;
+init().catch((e) => {
+  window.launchAtlasFailed = true;
+  console.error(e);
+  $('launchButton').disabled = true;
+  error('Could not load the flight explorer: ' + e.message);
 });

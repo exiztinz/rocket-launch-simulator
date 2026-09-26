@@ -21,9 +21,9 @@
     "historicalConfidence": "high",
     "historicalNotes": [
       "Stage burn timing and staging sequence are sourced from Apollo 11 launch timelines.",
-      "Stage masses are stack-level approximations constrained to preserve continuity in a 2D educational model.",
+      "Stage masses are stack-level approximations constrained to preserve continuity in an educational model.",
       "Thrust and mass-flow profiles are inferred piecewise approximations of known throttle/tailoff behavior.",
-      "The simplified constant-pitch heuristic (82 deg max) cannot fully replicate the Saturn V gravity-turn trajectory. The S-IVB burn-end altitude is ~35 km below historical due to net-downward force during the near-horizontal S-IVB phase; insertion velocity error is ~5% high for the same reason. Both are residual structural limitations of the heuristic guidance model."
+      "Pitch-rate-limited guidance and final-stage throttle target an approximate insertion state. Throttle reduces propellant consumption; remaining fuel is retained during coast. This combines insertion maneuvers into one ascent abstraction, not an exact historical guidance replay."
     ],
     "location": {
       "site": "Kennedy Space Center LC-39A",
@@ -40,19 +40,46 @@
         "cd": 0.35,
         "areaM2": 79,
         "thrustProfile": [
-          { "untilSec": 30, "scale": 0.95 },
-          { "untilSec": 125, "scale": 1.0 },
-          { "untilSec": 154, "scale": 0.93 },
-          { "untilSec": 162, "scale": 0.72 }
+          {
+            "untilSec": 30,
+            "scale": 0.95
+          },
+          {
+            "untilSec": 125,
+            "scale": 1.0
+          },
+          {
+            "untilSec": 154,
+            "scale": 0.93
+          },
+          {
+            "untilSec": 162,
+            "scale": 0.72
+          }
         ],
         "massFlowProfile": [
-          { "untilSec": 90, "scale": 0.95 },
-          { "untilSec": 145, "scale": 1.0 },
-          { "untilSec": 162, "scale": 1.08 }
+          {
+            "untilSec": 90,
+            "scale": 0.95
+          },
+          {
+            "untilSec": 145,
+            "scale": 1.0
+          },
+          {
+            "untilSec": 162,
+            "scale": 1.08
+          }
         ],
         "events": [
-          { "timeSec": 161, "label": "MECO" },
-          { "timeSec": 162, "label": "Stage Sep" }
+          {
+            "timeSec": 161,
+            "label": "MECO"
+          },
+          {
+            "timeSec": 162,
+            "label": "Stage Sep"
+          }
         ]
       },
       {
@@ -64,19 +91,46 @@
         "cd": 0.28,
         "areaM2": 44,
         "thrustProfile": [
-          { "untilSec": 45, "scale": 0.9 },
-          { "untilSec": 300, "scale": 1.0 },
-          { "untilSec": 347, "scale": 0.94 },
-          { "untilSec": 367, "scale": 0.85 }
+          {
+            "untilSec": 45,
+            "scale": 0.9
+          },
+          {
+            "untilSec": 300,
+            "scale": 1.0
+          },
+          {
+            "untilSec": 347,
+            "scale": 0.94
+          },
+          {
+            "untilSec": 367,
+            "scale": 0.85
+          }
         ],
         "massFlowProfile": [
-          { "untilSec": 220, "scale": 1.0 },
-          { "untilSec": 320, "scale": 0.96 },
-          { "untilSec": 367, "scale": 1.05 }
+          {
+            "untilSec": 220,
+            "scale": 1.0
+          },
+          {
+            "untilSec": 320,
+            "scale": 0.96
+          },
+          {
+            "untilSec": 367,
+            "scale": 1.05
+          }
         ],
         "events": [
-          { "timeSec": 367, "label": "S-II Shutdown" },
-          { "timeSec": 369, "label": "Stage Sep" }
+          {
+            "timeSec": 367,
+            "label": "S-II Shutdown"
+          },
+          {
+            "timeSec": 369,
+            "label": "Stage Sep"
+          }
         ]
       },
       {
@@ -88,16 +142,34 @@
         "cd": 0.22,
         "areaM2": 28,
         "thrustProfile": [
-          { "untilSec": 18, "scale": 0.82 },
-          { "untilSec": 145, "scale": 1.0 },
-          { "untilSec": 165, "scale": 0.88 }
+          {
+            "untilSec": 18,
+            "scale": 0.82
+          },
+          {
+            "untilSec": 145,
+            "scale": 1.0
+          },
+          {
+            "untilSec": 165,
+            "scale": 0.88
+          }
         ],
         "massFlowProfile": [
-          { "untilSec": 140, "scale": 0.97 },
-          { "untilSec": 165, "scale": 1.12 }
+          {
+            "untilSec": 140,
+            "scale": 0.97
+          },
+          {
+            "untilSec": 165,
+            "scale": 1.12
+          }
         ],
         "events": [
-          { "timeSec": 165, "label": "S-IVB Cutoff (Orbit Insertion)" }
+          {
+            "timeSec": 165,
+            "label": "S-IVB Cutoff (Orbit Insertion)"
+          }
         ]
       }
     ],
@@ -140,7 +212,8 @@
     "historicalNotes": [
       "Major ascent milestones (SRB sep and MECO timing) are sourced from NASA mission chronologies.",
       "Integrated stack masses are approximated for a two-stage educational abstraction.",
-      "Piecewise profile captures throttle bucket and end-of-burn tailoff behavior heuristically."
+      "Piecewise profile captures throttle bucket and end-of-burn tailoff behavior heuristically.",
+      "Pitch-rate-limited guidance and final-stage throttle target an approximate insertion state. Throttle reduces propellant consumption; remaining fuel is retained during coast. This combines insertion maneuvers into one ascent abstraction, not an exact historical guidance replay."
     ],
     "location": {
       "site": "Kennedy Space Center LC-39A",
@@ -157,17 +230,38 @@
         "cd": 0.46,
         "areaM2": 85,
         "thrustProfile": [
-          { "untilSec": 26, "scale": 0.92 },
-          { "untilSec": 80, "scale": 1.0 },
-          { "untilSec": 110, "scale": 0.9 },
-          { "untilSec": 124, "scale": 0.7 }
+          {
+            "untilSec": 26,
+            "scale": 0.92
+          },
+          {
+            "untilSec": 80,
+            "scale": 1.0
+          },
+          {
+            "untilSec": 110,
+            "scale": 0.9
+          },
+          {
+            "untilSec": 124,
+            "scale": 0.7
+          }
         ],
         "massFlowProfile": [
-          { "untilSec": 90, "scale": 0.95 },
-          { "untilSec": 124, "scale": 1.15 }
+          {
+            "untilSec": 90,
+            "scale": 0.95
+          },
+          {
+            "untilSec": 124,
+            "scale": 1.15
+          }
         ],
         "events": [
-          { "timeSec": 124, "label": "SRB Separation" }
+          {
+            "timeSec": 124,
+            "label": "SRB Separation"
+          }
         ]
       },
       {
@@ -179,16 +273,34 @@
         "cd": 0.24,
         "areaM2": 52,
         "thrustProfile": [
-          { "untilSec": 90, "scale": 0.95 },
-          { "untilSec": 330, "scale": 1.0 },
-          { "untilSec": 390, "scale": 0.9 }
+          {
+            "untilSec": 90,
+            "scale": 0.95
+          },
+          {
+            "untilSec": 330,
+            "scale": 1.0
+          },
+          {
+            "untilSec": 390,
+            "scale": 0.9
+          }
         ],
         "massFlowProfile": [
-          { "untilSec": 320, "scale": 0.98 },
-          { "untilSec": 390, "scale": 1.1 }
+          {
+            "untilSec": 320,
+            "scale": 0.98
+          },
+          {
+            "untilSec": 390,
+            "scale": 1.1
+          }
         ],
         "events": [
-          { "timeSec": 390, "label": "MECO" }
+          {
+            "timeSec": 390,
+            "label": "MECO"
+          }
         ]
       }
     ],
@@ -199,12 +311,6 @@
       "targetPerigeeM": 240000,
       "peakAltitudeM": 260000,
       "coastDurationSec": 1400,
-      "returnsToEarth": true,
-      "returnProfile": {
-        "coastBeforeReturnSec": 2400,
-        "entryLeadSec": 900,
-        "descentDurationSec": 3600
-      },
       "historicalMilestones": {
         "mecoTimeSec": 514,
         "stageSeparationTimeSec": 124,
@@ -238,7 +344,8 @@
       "Mission timing is based on a representative Starlink-class Falcon 9 ascent profile.",
       "Second-stage depletion state is inferred to preserve realistic mass ratio and continuity.",
       "Throttle and flow profiles are inferred from public webcast timing patterns and technical summaries.",
-      "This model uses a single upper-stage burn. Real Starlink missions use two MVac burns: SECO-1 into a parking orbit (~150 km) then SECO-2 to circularise at ~550 km. The historical milestone reflects the SECO-1 parking-orbit conditions achievable with the single-burn simplified model."
+      "Pitch-rate-limited guidance and final-stage throttle target an approximate insertion state. Throttle reduces propellant consumption; remaining fuel is retained during coast. This combines insertion maneuvers into one ascent abstraction, not an exact historical guidance replay.",
+      "The single-burn model uses a representative 440 km insertion reference. Separate real-world parking-orbit, coast and circularization burns are not modeled."
     ],
     "location": {
       "site": "Cape Canaveral SLC-40",
@@ -255,20 +362,50 @@
         "cd": 0.33,
         "areaM2": 10.5,
         "thrustProfile": [
-          { "untilSec": 35, "scale": 0.95 },
-          { "untilSec": 68, "scale": 0.84 },
-          { "untilSec": 130, "scale": 0.97 },
-          { "untilSec": 162, "scale": 1.0 }
+          {
+            "untilSec": 35,
+            "scale": 0.95
+          },
+          {
+            "untilSec": 68,
+            "scale": 0.84
+          },
+          {
+            "untilSec": 130,
+            "scale": 0.97
+          },
+          {
+            "untilSec": 162,
+            "scale": 1.0
+          }
         ],
         "massFlowProfile": [
-          { "untilSec": 70, "scale": 0.9 },
-          { "untilSec": 150, "scale": 1.02 },
-          { "untilSec": 162, "scale": 1.08 }
+          {
+            "untilSec": 70,
+            "scale": 0.9
+          },
+          {
+            "untilSec": 150,
+            "scale": 1.02
+          },
+          {
+            "untilSec": 162,
+            "scale": 1.08
+          }
         ],
         "events": [
-          { "timeSec": 68, "label": "Max-Q" },
-          { "timeSec": 162, "label": "MECO" },
-          { "timeSec": 165, "label": "Stage Sep" }
+          {
+            "timeSec": 68,
+            "label": "Max-Q"
+          },
+          {
+            "timeSec": 162,
+            "label": "MECO"
+          },
+          {
+            "timeSec": 165,
+            "label": "Stage Sep"
+          }
         ]
       },
       {
@@ -280,16 +417,34 @@
         "cd": 0.18,
         "areaM2": 4.5,
         "thrustProfile": [
-          { "untilSec": 20, "scale": 0.84 },
-          { "untilSec": 340, "scale": 1.0 },
-          { "untilSec": 378, "scale": 0.92 }
+          {
+            "untilSec": 20,
+            "scale": 0.84
+          },
+          {
+            "untilSec": 340,
+            "scale": 1.0
+          },
+          {
+            "untilSec": 378,
+            "scale": 0.92
+          }
         ],
         "massFlowProfile": [
-          { "untilSec": 320, "scale": 0.98 },
-          { "untilSec": 378, "scale": 1.08 }
+          {
+            "untilSec": 320,
+            "scale": 0.98
+          },
+          {
+            "untilSec": 378,
+            "scale": 1.08
+          }
         ],
         "events": [
-          { "timeSec": 378, "label": "SECO" }
+          {
+            "timeSec": 378,
+            "label": "SECO"
+          }
         ]
       }
     ],
