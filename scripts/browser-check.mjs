@@ -14,6 +14,23 @@ try {
     headless: true
   });
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  await page.addInitScript(() => {
+    const NativeContext = window.AudioContext;
+    window.audioTestContexts = [];
+    window.AudioContext = class extends NativeContext {
+      constructor(...args) {
+        super(...args);
+        this.probe = this.createAnalyser();
+        this.probe.fftSize = 2048;
+        window.audioTestContexts.push(this);
+      }
+      createDynamicsCompressor() {
+        const node = super.createDynamicsCompressor();
+        node.connect(this.probe);
+        return node;
+      }
+    };
+  });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => {
@@ -40,7 +57,7 @@ try {
 
   for (const preset of ['saturn-v-apollo-11', 'space-shuttle-sts-1', 'falcon-9-starlink']) {
     await page.selectOption('#presetSelect', preset);
-    for (const t of [0, 80, 200, 600]) {
+    for (const t of [0, 80, 200, 550, 600, 680]) {
       await seek(t);
       assert.match(await page.locator('#telemetryAltitude').innerText(), /\d/);
       await page.screenshot({ path: `.artifacts/${preset}-${t}.png` });
@@ -80,9 +97,38 @@ try {
     await page.screenshot({ path: `.artifacts/layout-${width}.png`, fullPage: true });
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
+  assert.equal(
+    await page.evaluate(() => window.audioTestContexts.length),
+    0,
+    'No audio before interaction'
+  );
+  async function audioLevel() {
+    return page.evaluate(() => {
+      const ctx = window.audioTestContexts[0];
+      if (!ctx) return 0;
+      const data = new Float32Array(ctx.probe.fftSize);
+      ctx.probe.getFloatTimeDomainData(data);
+      return Math.sqrt(data.reduce((sum, value) => sum + value * value, 0) / data.length);
+    });
+  }
   await page.click('#launchButton');
   await page.waitForTimeout(3600);
   assert.equal(await page.locator('#countdownLabel').innerText(), 'POWERED');
+  assert.ok((await audioLevel()) > 0.001, 'Launch should produce audible output');
+  await page.uncheck('#effectsToggle');
+  await page.waitForTimeout(700);
+  assert.ok((await audioLevel()) > 0.0001, 'Music plays independently of effects');
+  await page.uncheck('#musicToggle');
+  await page.waitForTimeout(900);
+  assert.ok((await audioLevel()) < 0.0001, 'Both toggles mute the output');
+  await page.check('#effectsToggle');
+  await page.waitForTimeout(400);
+  assert.ok((await audioLevel()) > 0.001, 'Engine effects play independently of music');
+  await page.check('#musicToggle');
+  await page.locator('#volumeControl').fill('0');
+  await page.waitForTimeout(900);
+  assert.ok((await audioLevel()) < 0.0001, 'Zero volume mutes all audio');
+  await page.locator('#volumeControl').fill('55');
   await page.click('#pauseButton');
   const paused = await page.locator('#timeline').inputValue();
   await page.waitForTimeout(300);
@@ -91,8 +137,14 @@ try {
     paused,
     'Pause must freeze the flight clock'
   );
+  assert.ok((await audioLevel()) < 0.0001, 'Pause silences the audio');
+  await page.click('#pauseButton');
+  await page.waitForTimeout(500);
+  assert.ok((await audioLevel()) > 0.001, 'Resume restores audio');
   await seek(400);
   await seek(25);
+  await page.waitForTimeout(300);
+  assert.ok((await audioLevel()) < 0.0001, 'Scrubbing stays silent');
   assert.equal(await page.locator('#missionClock').innerText(), 'T+ 00:25');
   for (const mode of ['ground', 'orbit', 'free', 'follow'])
     await page.selectOption('#cameraSelect', mode);
@@ -100,10 +152,20 @@ try {
     await page.selectOption('#qualitySelect', quality);
   await page.check('#reducedMotionToggle');
   await page.click('#resetButton');
+  await page.click('#launchButton');
+  await page.waitForTimeout(120);
+  await page.click('#resetButton');
+  await page.waitForTimeout(300);
+  assert.ok((await audioLevel()) < 0.0001, 'Reset stops countdown and score');
+  assert.equal(
+    await page.evaluate(() => window.audioTestContexts.length),
+    1,
+    'Replay reuses one audio context'
+  );
   await page.screenshot({ path: '.artifacts/final-desktop.png', fullPage: true });
   assert.deepEqual(errors, [], `Browser errors: ${errors.join('\n')}`);
   console.log(
-    'PASS: all missions, playback, scrubbing, camera modes, quality levels, and 6 responsive sizes.'
+    'PASS: all missions, playback, audio output and controls, scrubbing, camera modes, quality levels, and 6 responsive sizes.'
   );
 } finally {
   await browser?.close();

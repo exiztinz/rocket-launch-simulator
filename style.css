@@ -812,6 +812,37 @@ p {
     font-size: 8px;
   }
 }
+.audio-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+}
+.audio-volume {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+#volumeControl {
+  width: 90px;
+  min-height: 24px;
+  margin: 0;
+  accent-color: var(--cyan);
+}
+@media (max-width: 600px) {
+  .audio-controls {
+    gap: 10px 16px;
+  }
+  .audio-volume {
+    margin-left: 0;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   * {
     scroll-behavior: auto !important;

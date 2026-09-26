@@ -121,6 +121,23 @@ for (const preset of presets)
     );
   });
 
+test('S-IVB settles along the local horizon without pitching up to rescue a falling trajectory', () => {
+  const trajectory = buildTrajectory(presets.find((p) => p.id === 'saturn-v-apollo-11'));
+  const finalStage = trajectory.stages.at(-1);
+  const powered = trajectory.samples.filter((s) => s.stageIndex === finalStage.index && s.engineOn);
+  for (const s of powered) {
+    const elevation =
+      (Math.asin(dot(array(s.attitudeEci), array(s.posEci)) / length(array(s.posEci))) * 180) /
+      Math.PI;
+    assert.ok(elevation < 32 && elevation > -5, `S-IVB elevation ${elevation} at ${s.tSec}s`);
+    if (s.tSec > finalStage.startSec + 60)
+      assert.ok(elevation < 16, `S-IVB should settle near horizontal: ${elevation}`);
+    close(s.altitudeM, 190000, 1000, 'S-IVB maintains insertion altitude');
+  }
+  const cutoff = sampleAtTime(trajectory.samples, trajectory.stats.burnoutSec);
+  close(cutoff.perigeeM, 183000, 10000, 'viable parking orbit');
+});
+
 test('Insufficient upper-stage thrust produces an impact rather than an invented orbit or landing', () => {
   const weak = structuredClone(presets.at(-1));
   weak.stages.at(-1).avgThrustN *= 0.15;

@@ -191,7 +191,8 @@ export function buildTrajectory(preset) {
     const tSec = step * DT;
     const stage = lookupStage(stages, tSec);
     const carriedStage = stage || stages.find((s) => tSec < s.startSec) || lastStage;
-    const activeStack = stage || (tSec >= burnoutSec ? lastStage : stages[Math.max(0, carriedStage.index - 1)]);
+    const activeStack =
+      stage || (tSec >= burnoutSec ? lastStage : stages[Math.max(0, carriedStage.index - 1)]);
     const massKg = activeStack.startMassKg - propellantUsedKg[activeStack.index];
     const altitudeM = Math.max(0, length(r) - EARTH_RADIUS_M);
     const radial = unit(r);
@@ -217,7 +218,8 @@ export function buildTrajectory(preset) {
     // the target never overwrites position or adds velocity without thrust.
     const targetAltitude =
       hints.historicalMilestones?.orbitInsertionAltitudeM ?? hints.targetPerigeeM ?? 200000;
-    const timeToGo = Math.max(5, burnoutSec - tSec);
+    const guidanceEndSec = stage && stage.index > 0 ? stage.endSec : burnoutSec;
+    const timeToGo = Math.max(5, guidanceEndSec - tSec);
     const requestedRadialAccel = clamp(
       (6 * (targetAltitude - altitudeM)) / timeToGo ** 2 - (4 * vr) / timeToGo,
       -8,
@@ -235,10 +237,25 @@ export function buildTrajectory(preset) {
     );
     // Some historical MECO speeds describe a suborbital state before a later
     // insertion burn. Use a viable orbit floor for this single-burn abstraction.
-    const targetSpeed = Math.max(
+    const insertionSpeed = Math.max(
       hints.historicalMilestones?.orbitInsertionVelocityMps ?? 0,
       targetOrbitalSpeed
     );
+    // Reserve acceleration for later stages instead of spreading the current
+    // stage's speed gain over the entire ascent and starving the final stage.
+    const remainingDeltaV = stages.reduce((sum, next) => {
+      if (!stage || next.index <= stage.index) return sum;
+      const propellant = next.startMassKg - next.endMassKg;
+      return (
+        sum +
+        (propellant > 0
+          ? ((next.avgThrustN * next.burnTimeSec) / propellant) *
+            Math.log(next.startMassKg / next.endMassKg)
+          : 0)
+      );
+    }, 0);
+    // Leave margin for steering losses and throttle during the remaining burns.
+    const targetSpeed = insertionSpeed - remainingDeltaV * 0.7;
     if (stage && stage.index > 0 && vt > targetSpeed * 0.65) {
       // Approach insertion speed using less thrust, retaining unused propellant.
       // This prevents full-duration preset burns from overshooting into a much
@@ -318,7 +335,14 @@ export function buildTrajectory(preset) {
       accelerationMps2: holdDown ? 0 : dot(inertialAccel, radial) + (vt * vt) / length(r),
       totalAccelerationMps2: holdDown ? 0 : length(inertialAccel),
       properAccelerationMps2: holdDown ? g : length(add(inertialAccel, scale(gravity(r), -1))),
-      fuelMassKg: stages.reduce((sum, entry) => sum + (entry.index < activeStack.index ? 0 : Math.max(0, entry.startMassKg-entry.endMassKg-propellantUsedKg[entry.index])), 0),
+      fuelMassKg: stages.reduce(
+        (sum, entry) =>
+          sum +
+          (entry.index < activeStack.index
+            ? 0
+            : Math.max(0, entry.startMassKg - entry.endMassKg - propellantUsedKg[entry.index])),
+        0
+      ),
       massKg,
       dynamicPressurePa: 0.5 * atmosphereDensity(altitudeM) * airspeed ** 2,
       x: Math.sin(downrangeRad) * length(r),
@@ -360,8 +384,7 @@ export function buildTrajectory(preset) {
     if (impacted) break;
     if (stage) {
       const scheduledFlow =
-        stageMassAt(stage, tSec) -
-        stageMassAt(stage, Math.min(tSec + DT, stage.endSec));
+        stageMassAt(stage, tSec) - stageMassAt(stage, Math.min(tSec + DT, stage.endSec));
       propellantUsedKg[stage.index] += Math.max(0, scheduledFlow) * guidanceThrottle;
     }
     if (holdDown) {

@@ -16,6 +16,7 @@ The static server uses Node's standard library. Browser libraries and optional f
 ## Explore a flight
 
 - Choose a mission and launch through the countdown.
+- Hear countdown tones, ignition rumble, staging effects, and an original ambient score. Sound effects and music have separate toggles and a shared volume slider below the timeline. Audio starts with Launch; pausing, scrubbing, resetting, switching missions, or hiding the tab silences it. Music keeps its tempo during fast-forward.
 - Pause/resume, scrub to any point, or cycle 1x / 4x / 8x / 32x playback.
 - Follow the rocket, watch from a fixed ground observer, see the whole Earth, or orbit/pan/zoom freely.
 - Expand the flight view, select rendering quality, or enable reduced motion.
@@ -40,7 +41,7 @@ The original stage thrust, mass, drag, and burn-duration inputs are retained. Co
 - Earth rotation retained while the vehicle is on the pad; pad airspeed is zero, while inertial speed is about 408 m/s at these launch sites.
 - Correct eastward longitude, consistent inertial/Earth-fixed coordinates, and a ground track derived from the actual flight state.
 - A prescribed initial pitch program followed by approximate altitude/vertical-speed feedback. Pitch changes are limited to 1.2 degrees/second.
-- Final-stage speed guidance reduces thrust and propellant consumption together. Unused propellant remains aboard during coast. A vis-viva speed floor avoids treating a historical pre-insertion MECO state as a stable orbit.
+- Upper-stage guidance targets each stage's own cutoff, reserving a conservative estimate of the later stages' velocity gain. This prevents S-II from throttling too early and leaving S-IVB to pitch steeply upward to recover altitude. Throttle reduces thrust and propellant consumption together; unused propellant remains aboard during coast. A vis-viva speed floor avoids treating a historical pre-insertion MECO state as a stable orbit.
 - Rocket attitude follows the thrust direction during powered flight and smoothly acquires prograde after final cutoff. It never depends on the frame-to-frame displacement of an exaggerated path.
 - Coast is integrated under gravity and drag. The old artificial Shuttle deorbit acceleration, velocity damping, and invented landing events have been removed. An actual intersection with the surface is reported as an impact.
 
@@ -60,9 +61,9 @@ npm run format:check
 npm run calibration:report
 ```
 
-`npm test` checks finite values, fuel monotonicity, frame/velocity consistency, launch direction, staging gaps, bounded attitude slew, interpolation across the dateline, and conservation of vacuum orbital energy/angular momentum over three revolutions.
+`npm test` checks finite values, fuel monotonicity, frame/velocity consistency, launch direction, staging gaps, bounded attitude slew, S-IVB attitude and parking orbit, interpolation across the dateline, and conservation of vacuum orbital energy/angular momentum over three revolutions.
 
-The browser check starts its own local server. On Windows it uses installed Edge; elsewhere install Chromium with `npx playwright install chromium`. Set `PLAYWRIGHT_CHANNEL` to test another installed Chromium browser. It checks all missions, pause/reset/scrub, camera and quality controls, console errors, and layouts at 320, 390, 768, 1024, 1366, and 1920 pixels. Screenshots are saved under the ignored `.artifacts/` directory. This does not claim device-level Safari/Firefox validation.
+The browser check starts its own local server. On Windows it uses installed Edge; elsewhere install Chromium with `npx playwright install chromium`. Set `PLAYWRIGHT_CHANNEL` to test another installed Chromium browser. It checks all missions, pause/reset/scrub, actual audio output and mute controls, camera and quality controls, console errors, and layouts at 320, 390, 768, 1024, 1366, and 1920 pixels. Screenshots are saved under the ignored `.artifacts/` directory. This does not claim device-level Safari/Firefox validation.
 
 ## Project map
 
@@ -70,6 +71,7 @@ The browser check starts its own local server. On Windows it uses installed Edge
 - `src/simulation/trajectory.js`: stages, forces, guidance, mission samples.
 - `src/simulation/playback.js`: binary search and interpolation.
 - `src/scene/threeScene.js`: models, Earth, lighting, cameras, and trails.
+- `src/audio/launchAudio.js`: procedural Web Audio effects and music; no audio asset downloads.
 - `src/ui/`: telemetry formatting and charts.
 - `src/app.js`: playback, mission selection, and UI events.
 - `scripts/`: static server, physics checks, browser checks, and calibration tools.

@@ -4,6 +4,7 @@ import { sampleAtTime } from './simulation/playback.js';
 import { LaunchScene } from './scene/threeScene.js';
 import { TelemetryCharts } from './ui/charts.js';
 import { TelemetryPanel } from './ui/telemetry.js';
+import { LaunchAudio } from './audio/launchAudio.js';
 
 const $ = (id) => document.getElementById(id);
 const state = {
@@ -18,7 +19,8 @@ const state = {
   lastFrame: 0,
   lastUI: 0
 };
-let scene, charts, telemetry;
+let scene, charts, telemetry, currentSample;
+const audio = new LaunchAudio();
 const clock = (seconds) =>
   `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
 function error(message) {
@@ -26,6 +28,7 @@ function error(message) {
   $('appError').textContent = message;
 }
 function updateControls() {
+  if (!state.playing) audio.stop();
   $('pauseButton').disabled = !state.started;
   $('pauseButton').textContent = state.playing ? 'Pause' : 'Resume';
   $('pauseButton').setAttribute('aria-label', state.playing ? 'Pause playback' : 'Resume playback');
@@ -53,6 +56,7 @@ function renderTime({ rebuild = false, forceUI = false, snapCamera = false } = {
     state.pathIndex += 5;
   }
   const sample = sampleAtTime(samples, state.time);
+  currentSample = sample;
   scene.updateFromSample(sample, { snapCamera });
   if (forceUI) {
     telemetry.update(sample);
@@ -69,6 +73,7 @@ function renderTime({ rebuild = false, forceUI = false, snapCamera = false } = {
   }
 }
 function reset() {
+  audio.stop({ reset: true });
   state.time = 0;
   state.playing = false;
   state.started = false;
@@ -79,6 +84,7 @@ function reset() {
   updateControls();
 }
 function selectPreset(id) {
+  audio.stop({ reset: true });
   state.playing = false;
   const preset = state.presets.find((p) => p.id === id);
   if (!preset) return;
@@ -138,6 +144,15 @@ function animate(now) {
     }
   }
   scene.render(dt);
+  if (currentSample)
+    audio.update({ playing: state.playing, countdown: state.countdown, sample: currentSample });
+}
+async function unlockAudio() {
+  const available = await audio.unlock();
+  if (!available) {
+    for (const id of ['effectsToggle', 'musicToggle', 'volumeControl']) $(id).disabled = true;
+    $('audioControls').title = 'Audio is unavailable in this browser.';
+  }
 }
 async function init() {
   scene = new LaunchScene($('sim3dCanvas'));
@@ -157,6 +172,7 @@ async function init() {
   $('presetSelect').addEventListener('change', (e) => selectPreset(e.target.value));
   $('launchButton').addEventListener('click', () => {
     reset();
+    void unlockAudio();
     state.started = true;
     state.playing = true;
     state.countdown = 3;
@@ -166,6 +182,7 @@ async function init() {
   $('pauseButton').addEventListener('click', () => {
     if (state.time >= state.trajectory.stats.durationSec) state.time = 0;
     state.playing = !state.playing;
+    if (state.playing) void unlockAudio();
     state.lastFrame = 0;
     renderTime({ forceUI: true, rebuild: state.time === 0 });
     updateControls();
@@ -195,6 +212,15 @@ async function init() {
     }[e.target.value];
   });
   $('qualitySelect').addEventListener('change', (e) => scene.setQuality(e.target.value));
+  for (const id of ['effectsToggle', 'musicToggle', 'volumeControl'])
+    $(id).addEventListener('input', () => {
+      audio.setOptions({
+        effects: $('effectsToggle').checked,
+        music: $('musicToggle').checked,
+        volume: Number($('volumeControl').value) / 100
+      });
+      $('volumeControl').setAttribute('aria-valuetext', `${$('volumeControl').value} percent`);
+    });
   $('reducedMotionToggle').addEventListener('change', (e) =>
     scene.setReducedMotion(e.target.checked)
   );

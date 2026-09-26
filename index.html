@@ -106,6 +106,25 @@
             <div class="timeline-labels">
               <span>LIFTOFF</span><span id="eventLabel">Ready for launch</span><span>COAST</span>
             </div>
+            <div id="audioControls" class="audio-controls" role="group" aria-label="Mission audio">
+              <label class="toggle-label"
+                ><input id="effectsToggle" type="checkbox" checked /> Sound effects</label
+              >
+              <label class="toggle-label"
+                ><input id="musicToggle" type="checkbox" checked /> Music</label
+              >
+              <label class="audio-volume" for="volumeControl"
+                >Volume
+                <input
+                  id="volumeControl"
+                  type="range"
+                  min="0"
+                  max="100"
+                  value="55"
+                  aria-valuetext="55 percent"
+                />
+              </label>
+            </div>
           </div>
         </article>
         <aside class="sidebar">
